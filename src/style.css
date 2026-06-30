@@ -1,0 +1,41 @@
+:root {
+  --bg: #000;
+  --text: #fff;
+  --text-muted: #888;
+  --border: #fff;
+  --border-subtle: #333;
+
+  --board-surface: #0a0a0a;
+  --board-active: #1a1a1a;
+  --board-select-box: rgba(255, 255, 255, 0.08);
+
+  --pie-front: #0a0a0a;
+  --pie-front-alt: #141414;
+  --pie-back: #111;
+  --pie-back-alt: #1a1a1a;
+  --pie-center: #000;
+  --pie-label: #fff;
+  --pie-clear: #fff;
+  --pie-highlight-value: #333;
+  --pie-highlight-note: #222;
+
+  --conflict-bg: rgba(220, 50, 50, 0.45);
+  --conflict-text: #ff8888;
+  --conflict-line-bg: rgba(220, 50, 50, 0.12);
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+button {
+  font-family: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}

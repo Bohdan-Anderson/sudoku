@@ -1,0 +1,8 @@
+# AWS access keys for this deploy kit — never commit.
+uploader-aws-credentials.env
+
+node_modules/
+dist/
+.env
+
+.DS_Store
