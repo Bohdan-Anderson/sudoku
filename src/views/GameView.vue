@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, useTemplateRef } from 'vue'
 import { useRouter } from 'vue-router'
 import SudokuBoard from '../components/SudokuBoard.vue'
 import { useGamesStore } from '../stores/games'
@@ -9,6 +9,7 @@ const props = defineProps<{ id: string }>()
 
 const router = useRouter()
 const store = useGamesStore()
+const board = useTemplateRef('board')
 
 const game = computed(() => store.getGame(props.id))
 
@@ -25,6 +26,12 @@ onMounted(() => {
 const progress = computed(() =>
   game.value ? store.gameProgress(game.value) : 0,
 )
+
+/** Ask the board to fill in one empty cell, then record the help in the store. */
+function useHelp() {
+  if (!board.value?.useHelp()) return
+  store.useHelp(props.id)
+}
 </script>
 
 <template>
@@ -36,9 +43,13 @@ const progress = computed(() =>
       <span class="meta">
         {{ DIFFICULTY_LABELS[game.difficulty] }} · {{ progress }}%
       </span>
+      <div class="help-section">
+        <button class="help" type="button" aria-label="Help" @click="useHelp">?</button>
+        <span v-if="game.helpCount > 0" class="help-count">helps {{ game.helpCount }}</span>
+      </div>
     </header>
 
-    <SudokuBoard :game-id="id" />
+    <SudokuBoard ref="board" :game-id="id" />
 
     <div v-if="game.status === 'won'" class="win-banner">Solved</div>
   </div>
@@ -65,7 +76,8 @@ const progress = computed(() =>
   gap: 12px;
 }
 
-.back {
+.back,
+.help {
   min-width: 44px;
   min-height: 44px;
   border: 1px solid var(--border-subtle);
@@ -76,10 +88,24 @@ const progress = computed(() =>
 }
 
 .meta {
+  flex: 1;
+  text-align: center;
   font-size: 14px;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.help-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.help-count {
+  font-size: 14px;
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .win-banner {

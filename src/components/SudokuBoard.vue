@@ -2,6 +2,7 @@
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { cellsFromGame, type Cell } from '../puzzle'
 import { clampPickerPosition, hitTest, pieSizes, type PickerHit } from '../pieSelector'
+import { candidates, gridFromPuzzle } from '../sudoku/board'
 import { boxIndex, getConflictInfo, type ConflictInfo } from '../sudoku/validate'
 import { useGamesStore } from '../stores/games'
 import PieSelector from './PieSelector.vue'
@@ -188,6 +189,38 @@ function cellClass(i: number) {
 function hasNote(cell: Cell, n: number) {
   return !cell.value && cell.notes.has(n)
 }
+
+/** Fill the empty cell with the fewest valid candidates using the solution. Returns true if a cell was helped. */
+function useHelp(): boolean {
+  if (!game.value || isWon.value) return false
+
+  const grid = cells.value.map((c) => c.value ?? 0)
+  let bestIndex = -1
+  let bestCandidateCount = Infinity
+
+  for (let i = 0; i < cells.value.length; i++) {
+    const cell = cells.value[i]
+    if (cell.given || cell.value) continue
+
+    const count = candidates(grid, i).length
+    if (count < bestCandidateCount) {
+      bestCandidateCount = count
+      bestIndex = i
+    }
+  }
+
+  if (bestIndex === -1) return false
+
+  const solutionGrid = gridFromPuzzle(game.value.solution)
+  const cell = cells.value[bestIndex]
+  cell.value = solutionGrid[bestIndex]
+  cell.notes = new Set()
+  syncToStore()
+
+  return true
+}
+
+defineExpose({ useHelp })
 </script>
 
 <template>

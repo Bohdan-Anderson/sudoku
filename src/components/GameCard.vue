@@ -16,6 +16,13 @@ const store = useGamesStore()
 
 const progress = computed(() => store.gameProgress(props.game))
 
+const metaText = computed(() => {
+  const { helpCount } = props.game
+  return helpCount > 0
+    ? `${progress.value}% · ${helpCount} help${helpCount > 1 ? 's' : ''}`
+    : `${progress.value}% complete`
+})
+
 function cellFilled(i: number) {
   return (props.game.cells[i]?.value ?? 0) > 0
 }
@@ -41,7 +48,7 @@ function cellGiven(i: number) {
           {{ DIFFICULTY_LABELS[game.difficulty] }}
           <span v-if="completed" class="badge">Done</span>
         </span>
-        <span class="meta">{{ progress }}% complete</span>
+        <span class="meta">{{ metaText }}</span>
       </div>
     </button>
     <button

@@ -69,7 +69,7 @@ export const useGamesStore = defineStore('games', {
         const raw = localStorage.getItem(STORAGE_KEY)
         if (!raw) return
         const data = JSON.parse(raw) as PersistedState
-        this.games = data.games ?? []
+        this.games = (data.games ?? []).map((g) => ({ ...g, helpCount: g.helpCount ?? 0 }))
         this.lastActiveGameId = data.lastActiveGameId ?? null
       } catch {
         this.games = []
@@ -110,6 +110,7 @@ export const useGamesStore = defineStore('games', {
         status: 'playing',
         createdAt: now,
         updatedAt: now,
+        helpCount: 0,
       }
       this.games.unshift(game)
       this.lastActiveGameId = id
@@ -131,6 +132,14 @@ export const useGamesStore = defineStore('games', {
         }
       }
 
+      this.persist()
+    },
+
+    useHelp(id: string) {
+      const game = this.getGame(id)
+      if (!game) return
+
+      game.helpCount++
       this.persist()
     },
 

@@ -16,6 +16,7 @@ export interface SavedGame {
   status: GameStatus
   createdAt: number
   updatedAt: number
+  helpCount: number
 }
 
 export interface PersistedState {
