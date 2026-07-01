@@ -1,57 +1,204 @@
-# Static site deploy kit (bohdan-sudoku)
+# Sudoku
 
-This folder was produced by `provision-static-site-uploader-bundle.sh`. Use it with the **limited IAM user** created for this bucket so you can publish updates without admin access.
+A mobile-first Sudoku game built with Vue 3, TypeScript, and Vite. Features a touch-friendly radial menu for quick number entry, four difficulty levels, automatic puzzle generation with unique solutions, pencil marks for note-taking, and full undo/redo support. Packaged as a Progressive Web App (PWA) for offline play.
 
-## What you need
+**Live:** https://d327h6hurcq4re.cloudfront.net/
 
-- [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) installed
-- **AWS credentials** for the limited IAM user
+---
 
-If `uploader-aws-credentials.env` is in this folder, it was generated when the kit was built (**contains a secret**). Load it into your shell, then **delete the file** or move it to a password manager—do not commit it or leave it on shared disks.
+## Tech Stack
 
-```bash
-set -a && source ./uploader-aws-credentials.env && set +a
-# … run upload / invalidate …
-rm -f ./uploader-aws-credentials.env
+| Layer | Technology |
+|-------|-----------|
+| Framework | [Vue 3](https://vuejs.org/) (Composition API, `<script setup>`) |
+| Language | [TypeScript](https://www.typescriptlang.org/) (~6.0) |
+| Build | [Vite](https://vite.dev/) (~8.1) |
+| State | [Pinia](https://pinia.vuejs.org/) (~3.0) |
+| Routing | [Vue Router](https://router.vuejs.org/) (~5.1) |
+| PWA | [vite-plugin-pwa](https://vite-pwa-org.netlify.app/) with Workbox |
+| Icons | [sharp](https://sharp.pixelplumbing.com/) (PWA icon generation) |
+
+---
+
+## Features
+
+### 🎮 Gameplay
+- **4 difficulty levels** — Easy (36–45 clues), Medium (28–35), Hard (22–27), Extreme (17–21)
+- **Radial pie menu** — Tap a cell, drag through the inner ring to set a value, outer ring to toggle pencil marks, bottom wedge to clear. Animated entry with CSS
+- **Pencil marks** — Toggle candidate notes per cell (shown as a 3×3 mini-grid)
+- **Conflict detection** — Duplicate digits in a row, column, or box are highlighted in red; the affected row/col/box gets a subtle tint
+- **Auto-save** — Games persist to `localStorage` with a 300ms debounce
+- **Multiple concurrent games** — In-progress and completed lists on the home screen with mini thumbnail previews
+
+### 🆘 Help system
+- A **"?"** button in the game view top bar (right-aligned)
+- Each click fills in the hardest remaining empty cell (fewest valid candidates)
+- Tracks how many times help was used per game — shown as `helps N` next to the button, and on the game card in the home screen
+- Help count persists across sessions
+
+### ↩️ Undo / Redo
+- Buttons centered below the board
+- Every action is tracked: value placement, note toggle, clear, and help
+- Full history preserved across page refreshes via `localStorage`
+- Redo stack cleared when a new action is taken after undoing
+
+### 📱 PWA
+- Installable on mobile and desktop (standalone mode, portrait orientation)
+- Service worker caches all assets for offline play
+- Auto-updates when new content is available
+
+---
+
+## Architecture
+
+```
+sudoku/
+├── src/
+│   ├── views/              # Route-level page components
+│   │   ├── LandingView.vue    # Auto-redirect to last game or home
+│   │   ├── HomeView.vue       # Game list + new game buttons
+│   │   └── GameView.vue       # Board + top bar (back, meta, help)
+│   ├── components/          # Reusable UI components
+│   │   ├── SudokuBoard.vue    # 9×9 grid, cell interactions, undo/redo
+│   │   ├── PieSelector.vue    # SVG radial picker overlay
+│   │   └── GameCard.vue       # Mini preview card for saved games
+│   ├── sudoku/              # Pure game logic (framework-agnostic)
+│   │   ├── board.ts           # Grid primitives, candidates, peers
+│   │   ├── solver.ts          # Backtracking solver (MRV heuristic)
+│   │   ├── generator.ts       # Puzzle generation with unique solution
+│   │   └── validate.ts        # Conflict + win detection
+│   ├── stores/
+│   │   └── games.ts           # Pinia store — all game state + persistence
+│   ├── types/
+│   │   └── game.ts            # TypeScript interfaces and constants
+│   ├── router/
+│   │   └── index.ts           # Vue Router config
+│   ├── pieSelector.ts         # Radial menu geometry & hit-testing
+│   ├── puzzle.ts              # Cell runtime/serialization helpers
+│   ├── style.css              # Global dark theme CSS variables
+│   └── main.ts                # App entry point
+├── public/                    # Static assets (PWA icons, favicon)
+├── scripts/
+│   └── generate-pwa-icons.mjs # Auto-generates PWA icons from SVG
+├── vite.config.ts             # Vite + PWA plugin configuration
+└── package.json
 ```
 
-If that file is missing, ask the admin to create an access key for your IAM user (`CREATE_ACCESS_KEY=1` when running `create-specific-user.sh`) and configure `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` yourself (same region as the bucket: `ca-central-1`).
+### Key data flow
 
-## Live URLs
+```
+User taps cell → SudokuBoard captures PointerEvent
+  → PieSelector opens (overlay, z-index: 100)
+  → User drags to slice → hitTest() determines action
+  → SudokuBoard applies change to cells[] ref
+  → syncToStore() called:
+      → Store.updateGame() serializes cells
+      → isWin() check against solution
+      → Debounced localStorage.write() (300ms)
+  → Conflicts refreshed (getConflictInfo)
+```
 
-- **HTTPS (CloudFront):** https://d327h6hurcq4re.cloudfront.net/
-- **S3 website (direct):** only for debugging; production traffic should use CloudFront.
+### Puzzle engine (`src/sudoku/`)
 
-## Deploy flow
+1. **Generation** (`generator.ts`):
+   - Fill diagonal 3×3 boxes with random valid digits (guarantees solvability)
+   - Solve the full grid using backtracking with MRV
+   - Carve cells out while checking uniqueness via `countSolutions(grid, limit=2)`
+   - Target clue counts vary by difficulty
 
-1. **Upload** your built static files (default source is `./dist`):
+2. **Solving** (`solver.ts`):
+   - Pure backtracking with **Minimum Remaining Values** heuristic
+   - Picks the cell with fewest candidates at each branch
+   - `countSolutions()` stops counting at `limit` (used for uniqueness checks)
 
-   ```bash
-   ./upload-bohdan-sudoku.sh /path/to/your/build --delete
-   ```
+3. **Validation** (`validate.ts`):
+   - Scans all rows, columns, and 3×3 boxes for duplicate digits
+   - Returns per-cell conflict info plus affected rows/cols/boxes
+   - Win detection: all cells filled, matches solution, no conflicts
 
-   Omit the path to use `./dist`, or set `UPLOAD_SRC` and run without a first argument.
+### Persistence
 
-2. **Invalidate CloudFront** so viewers see new content (otherwise edges may serve cached files for a while):
+All game state is saved to `localStorage` under key `sudoku-games-v1`:
+- Multiple in-progress games
+- Completed games (with ability to review)
+- Help count per game
+- Full undo/redo move history
+- Last active game tracking
 
-   ```bash
-   ./invalidate-cloudfront-bohdan-sudoku.sh
-   ```
+Hydration happens at app startup in `main.ts`. Old saved games are gracefully backfilled with defaults for new fields.
 
-   Optional paths (instead of default `/*`):
+---
 
-   ```bash
-   ./invalidate-cloudfront-bohdan-sudoku.sh /index.html /assets/*
-   ```
+## Getting Started
 
-## Reference
+```bash
+# Install dependencies
+npm install
 
-- `cloudfront-bohdan-sudoku.env` — distribution id and domain (`source` it in shell if useful).
-- `uploader-aws-credentials.env` — optional; present only when a new access key was created for this kit.
-- `.gitignore` — if you turn this folder into a git repo, it ignores the credentials file so it is harder to commit by mistake (still prefer deleting the file after use).
+# Start dev server (hot reload)
+npm run dev
 
-## Notes
+# The dev server runs at http://localhost:5173 by default
+```
 
-- First time CloudFront is created, the HTTPS URL can take **several minutes** to fully deploy.
-- Invalidations have a [monthly free tier](https://aws.amazon.com/cloudfront/pricing/); prefer cache-friendly filenames or versioning for heavy churn.
-- Your IAM policy allows **upload** and **invalidate** for this site only—not bucket deletion, new distributions, or other AWS services.
+For network access from other devices:
+```bash
+npm run dev -- --host 0.0.0.0
+```
+
+---
+
+## Building & Deploying
+
+### Build for production
+
+```bash
+npm run build
+```
+
+Build output goes to `dist/`. The build step:
+1. Generates PWA icons from SVG (`scripts/generate-pwa-icons.mjs`)
+2. Type-checks with `vue-tsc -b`
+3. Bundles with Vite
+4. Generates service worker with Workbox (16+ assets precached)
+
+### Deploy to S3 + CloudFront
+
+The repo includes deployment scripts (generated from a provisioning tool):
+
+```bash
+# 1. Load AWS credentials (not committed — gitignored)
+set -a && source ./uploader-aws-credentials.env && set +a
+
+# 2. Upload to S3
+./upload-bohdan-sudoku.sh ./dist --delete
+
+# 3. Invalidate CloudFront cache
+./invalidate-cloudfront-bohdan-sudoku.sh
+```
+
+**Live URL:** https://d327h6hurcq4re.cloudfront.net/
+
+> **Note:** Deployment is manual. The upload script syncs `./dist` to the `bohdan-sudoku` S3 bucket in `ca-central-1`. The invalidation script clears CloudFront edge caches for distribution `E38FWYFXOLY6R4`.
+
+---
+
+## Development
+
+### Project commands
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start Vite dev server with hot reload |
+| `npm run build` | Type-check, generate icons, build for production |
+| `npm run preview` | Preview the production build locally |
+| `npm run icons` | Regenerate PWA icons only |
+
+### Tech notes
+
+- **State management:** Pinia Options API store (`defineStore('games', {...})`) with `state`, `getters`, and `actions`
+- **Persistence:** Manual `localStorage` sync (debounced 300ms) — no persistence plugin
+- **Cell data model:** Runtime uses `Set<number>` for notes; serialized as `number[]` for storage
+- **Grid representation:** Flat `number[]` array of 81 cells (row-major), 0 = empty
+- **Touch targets:** All interactive elements are minimum 44×44px (WCAG guideline)
+- **Safe areas:** Uses `env(safe-area-inset-bottom)` for notched devices
