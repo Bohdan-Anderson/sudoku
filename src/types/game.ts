@@ -7,6 +7,14 @@ export interface SavedCell {
   given: boolean
 }
 
+export interface MoveEntry {
+  cellIndex: number
+  prevValue: number | null
+  prevNotes: number[]
+  newValue: number | null
+  newNotes: number[]
+}
+
 export interface SavedGame {
   id: string
   puzzle: string
@@ -17,6 +25,8 @@ export interface SavedGame {
   createdAt: number
   updatedAt: number
   helpCount: number
+  moveHistory: MoveEntry[]
+  redoStack: MoveEntry[]
 }
 
 export interface PersistedState {

@@ -5,6 +5,7 @@ import { clampPickerPosition, hitTest, pieSizes, type PickerHit } from '../pieSe
 import { candidates, gridFromPuzzle } from '../sudoku/board'
 import { boxIndex, getConflictInfo, type ConflictInfo } from '../sudoku/validate'
 import { useGamesStore } from '../stores/games'
+import type { MoveEntry } from '../types/game'
 import PieSelector from './PieSelector.vue'
 
 const props = defineProps<{ gameId: string }>()
@@ -62,32 +63,54 @@ function updateHighlight(e: PointerEvent) {
   highlight.value = hitTest(e.clientX, e.clientY, pickerX.value, pickerY.value, pieFront.value, pieBack.value)
 }
 
+/** Snapshot a cell's current value/notes for use in a MoveEntry. */
+function snapshotCell(cell: Cell) {
+  return { value: cell.value, notes: [...cell.notes] }
+}
+
+function recordCellMove(index: number, before: { value: number | null; notes: number[] }, cell: Cell) {
+  const entry: MoveEntry = {
+    cellIndex: index,
+    prevValue: before.value,
+    prevNotes: before.notes,
+    newValue: cell.value,
+    newNotes: [...cell.notes],
+  }
+  store.recordMove(props.gameId, entry)
+}
+
 function applyHit(index: number, hit: PickerHit) {
   if (isWon.value) return
   const cell = cells.value[index]
   if (cell.given) return
 
   if (hit.action === 'clear') {
+    const before = snapshotCell(cell)
     cell.value = null
     cell.notes = new Set()
     syncToStore()
+    recordCellMove(index, before, cell)
     return
   }
 
   if (hit.action === 'value') {
+    const before = snapshotCell(cell)
     cell.value = hit.digit!
     cell.notes = new Set()
     syncToStore()
+    recordCellMove(index, before, cell)
     return
   }
 
   if (cell.value) return
 
+  const before = snapshotCell(cell)
   const next = new Set(cell.notes)
   if (next.has(hit.digit!)) next.delete(hit.digit!)
   else next.add(hit.digit!)
   cell.notes = next
   syncToStore()
+  recordCellMove(index, before, cell)
 }
 
 function closePicker() {
@@ -213,14 +236,41 @@ function useHelp(): boolean {
 
   const solutionGrid = gridFromPuzzle(game.value.solution)
   const cell = cells.value[bestIndex]
+  const before = snapshotCell(cell)
   cell.value = solutionGrid[bestIndex]
   cell.notes = new Set()
   syncToStore()
+  recordCellMove(bestIndex, before, cell)
 
   return true
 }
 
-defineExpose({ useHelp })
+/** Reverts the most recent recorded move, if any. */
+function performUndo() {
+  const entry = store.undo(props.gameId)
+  if (!entry) return
+
+  const cell = cells.value[entry.cellIndex]
+  cell.value = entry.prevValue
+  cell.notes = new Set(entry.prevNotes)
+  syncToStore()
+}
+
+/** Re-applies the most recently undone move, if any. */
+function performRedo() {
+  const entry = store.redo(props.gameId)
+  if (!entry) return
+
+  const cell = cells.value[entry.cellIndex]
+  cell.value = entry.newValue
+  cell.notes = new Set(entry.newNotes)
+  syncToStore()
+}
+
+const canUndo = computed(() => store.canUndo(props.gameId))
+const canRedo = computed(() => store.canRedo(props.gameId))
+
+defineExpose({ useHelp, performUndo, performRedo })
 </script>
 
 <template>
@@ -240,6 +290,11 @@ defineExpose({ useHelp })
       </div>
     </div>
 
+    <div class="undo-row">
+      <button class="undo-btn" type="button" :disabled="!canUndo" @click="performUndo">↩ Undo</button>
+      <button class="redo-btn" type="button" :disabled="!canRedo" @click="performRedo">↪ Redo</button>
+    </div>
+
     <PieSelector
       v-if="pickerOpen"
       :x="pickerX"
@@ -253,6 +308,30 @@ defineExpose({ useHelp })
 .board-wrap {
   position: relative;
   touch-action: none;
+}
+
+.undo-row {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  width: min(92vw, 420px);
+  margin: 12px auto 0;
+}
+
+.undo-btn,
+.redo-btn {
+  flex: 1;
+  min-height: 44px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 16px;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
 }
 
 .board {

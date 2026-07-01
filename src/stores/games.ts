@@ -3,7 +3,7 @@ import { cellsFromPuzzle, serializeCells, type Cell } from '../puzzle'
 import { generatePuzzle } from '../sudoku/generator'
 import { isWin } from '../sudoku/validate'
 import { progressPercent } from '../sudoku/board'
-import type { Difficulty, PersistedState, SavedGame } from '../types/game'
+import type { Difficulty, MoveEntry, PersistedState, SavedGame } from '../types/game'
 import { STORAGE_KEY } from '../types/game'
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null
@@ -61,6 +61,14 @@ export const useGamesStore = defineStore('games', {
       const grid = game.cells.map((c) => c.value ?? 0)
       return progressPercent(grid, game.puzzle)
     },
+
+    canUndo(): (id: string) => boolean {
+      return (id: string) => (this.getGame(id)?.moveHistory.length ?? 0) > 0
+    },
+
+    canRedo(): (id: string) => boolean {
+      return (id: string) => (this.getGame(id)?.redoStack.length ?? 0) > 0
+    },
   },
 
   actions: {
@@ -69,7 +77,12 @@ export const useGamesStore = defineStore('games', {
         const raw = localStorage.getItem(STORAGE_KEY)
         if (!raw) return
         const data = JSON.parse(raw) as PersistedState
-        this.games = (data.games ?? []).map((g) => ({ ...g, helpCount: g.helpCount ?? 0 }))
+        this.games = (data.games ?? []).map((g) => ({
+          ...g,
+          helpCount: g.helpCount ?? 0,
+          moveHistory: g.moveHistory ?? [],
+          redoStack: g.redoStack ?? [],
+        }))
         this.lastActiveGameId = data.lastActiveGameId ?? null
       } catch {
         this.games = []
@@ -111,6 +124,8 @@ export const useGamesStore = defineStore('games', {
         createdAt: now,
         updatedAt: now,
         helpCount: 0,
+        moveHistory: [],
+        redoStack: [],
       }
       this.games.unshift(game)
       this.lastActiveGameId = id
@@ -141,6 +156,35 @@ export const useGamesStore = defineStore('games', {
 
       game.helpCount++
       this.persist()
+    },
+
+    recordMove(id: string, entry: MoveEntry) {
+      const game = this.getGame(id)
+      if (!game) return
+
+      game.moveHistory.push(entry)
+      game.redoStack = []
+      this.persist()
+    },
+
+    undo(id: string): MoveEntry | undefined {
+      const game = this.getGame(id)
+      if (!game || game.moveHistory.length === 0) return undefined
+
+      const entry = game.moveHistory.pop()!
+      game.redoStack.push(entry)
+      this.persist()
+      return entry
+    },
+
+    redo(id: string): MoveEntry | undefined {
+      const game = this.getGame(id)
+      if (!game || game.redoStack.length === 0) return undefined
+
+      const entry = game.redoStack.pop()!
+      game.moveHistory.push(entry)
+      this.persist()
+      return entry
     },
 
     deleteGame(id: string) {
